@@ -1,0 +1,75 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    outputs:
+      anon_key: ${{ steps.keys.outputs.anon_key }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.122.0
+      - name: Link project
+        run: supabase link --project-ref "$PROJECT_REF"
+      - name: Apply database changes
+        run: supabase db push --include-all
+      - name: Push auth settings (site URL, redirects)
+        run: supabase config push --project-ref "$PROJECT_REF" --yes
+      - name: Set function secrets
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          REVIEWS_TOKEN=$(printf '%s' "reviews:$ANTHROPIC_API_KEY" | sha256sum | cut -d' ' -f1)
+          supabase secrets set --project-ref "$PROJECT_REF" ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" REVIEWS_TOKEN="$REVIEWS_TOKEN"
+      - name: Deploy functions
+        run: supabase functions deploy --project-ref "$PROJECT_REF" --use-api
+      - name: Read public key
+        id: keys
+        run: |
+          KEY=$(supabase projects api-keys --project-ref "$PROJECT_REF" -o json | jq -r '([.[] | select(.type=="publishable")][0].api_key) // ([.[] | select(.name=="anon")][0].api_key)')
+          echo "::add-mask::$KEY"
+          echo "anon_key=$KEY" >> "$GITHUB_OUTPUT"
+
+  frontend:
+    needs: backend
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build
+        env:
+          VITE_SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          VITE_SUPABASE_KEY: ${{ needs.backend.outputs.anon_key }}
+        run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

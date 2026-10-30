@@ -1,0 +1,29 @@
+name: Coach reviews
+
+on:
+  schedule:
+    - cron: "37 3 * * 1"   # weekly: Sunday 7:37pm Vancouver (PST; 8:37pm during PDT)
+    - cron: "36 15 1 * *"  # monthly: 1st of the month, 7:36am Vancouver (PST)
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: week or month
+        default: week
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask the coach to write reviews
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          KIND="${{ github.event.inputs.kind }}"
+          if [ -z "$KIND" ]; then
+            if [ "${{ github.event.schedule }}" = "36 15 1 * *" ]; then KIND=month; else KIND=week; fi
+          fi
+          TOKEN=$(printf '%s' "reviews:$ANTHROPIC_API_KEY" | sha256sum | cut -d' ' -f1)
+          curl -sS --fail-with-body -X POST "https://$PROJECT_REF.supabase.co/functions/v1/reviews" \
+            -H "content-type: application/json" -H "x-reviews-token: $TOKEN" \
+            -d "{\"kind\":\"$KIND\"}" --max-time 300
