@@ -4,10 +4,11 @@ on:
   schedule:
     - cron: "37 3 * * 1"   # weekly: Sunday 7:37pm Vancouver (PST; 8:37pm during PDT)
     - cron: "36 15 1 * *"  # monthly: 1st of the month, 7:36am Vancouver (PST)
+    - cron: "33 6 * * *"   # nightly: 10:33pm Vancouver (PST; 11:33pm during PDT)
   workflow_dispatch:
     inputs:
       kind:
-        description: week or month
+        description: day, week or month
         default: week
 
 jobs:
@@ -21,7 +22,11 @@ jobs:
         run: |
           KIND="${{ github.event.inputs.kind }}"
           if [ -z "$KIND" ]; then
-            if [ "${{ github.event.schedule }}" = "36 15 1 * *" ]; then KIND=month; else KIND=week; fi
+            case "${{ github.event.schedule }}" in
+              "36 15 1 * *") KIND=month ;;
+              "33 6 * * *") KIND=day ;;
+              *) KIND=week ;;
+            esac
           fi
           TOKEN=$(printf '%s' "reviews:$ANTHROPIC_API_KEY" | sha256sum | cut -d' ' -f1)
           curl -sS --fail-with-body -X POST "https://$PROJECT_REF.supabase.co/functions/v1/reviews" \

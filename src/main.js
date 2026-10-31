@@ -203,6 +203,16 @@ function bigRing(val, tgt) {
   <circle class="ringarc" cx="140" cy="140" r="${r}" fill="none" stroke="url(#${id})" stroke-width="18" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - pct)}" transform="rotate(-90 140 140)" style="transition:stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1)"/></svg>`;
 }
 const metric = (lab, val, unit, tgt, note, g1, g2) => `<div class="metric"><div class="row"><span class="lab">${lab}</span><span class="v">${val == null ? "–" : val}<small>${unit}</small></span></div><div class="bar" style="--g1:${g1};--g2:${g2}"><i style="width:${tgt ? Math.min(100, ((n(String(val).replace(/,/g, "")) || 0) / tgt) * 100) : 0}%"></i></div><div class="hint">${note}</div></div>`;
+const MICROS = [
+  ["satFatG", "Saturated fat", "g", 20, "max"], ["fiberG", "Fiber", "g", 38, "min"], ["sugarG", "Sugar", "g", 36, "max"],
+  ["sodiumMg", "Sodium", "mg", 2300, "max"], ["potassiumMg", "Potassium", "mg", 3400, "min"], ["calciumMg", "Calcium", "mg", 1000, "min"],
+  ["ironMg", "Iron", "mg", 8, "min"], ["magnesiumMg", "Magnesium", "mg", 420, "min"], ["zincMg", "Zinc", "mg", 11, "min"],
+];
+function microPanel(m) {
+  if (!m || !Object.keys(m).some((k) => n(m[k]) != null)) return '<p class="empty">Nutrients fill in as you log food. Label photos make them exact.</p>';
+  return `<div class="micros">${MICROS.map(([k, lab, unit, tgt, kind]) => { const v = n(m[k]); const pct = v == null ? 0 : Math.min(100, (v / tgt) * 100); const bad = v != null && (kind === "max" ? v > tgt : v < tgt * 0.6); const good = v != null && (kind === "max" ? v <= tgt : v >= tgt);
+    return `<div class="micro"><div class="row"><span>${lab}</span><span class="num ${bad ? "warn" : good ? "ok" : ""}">${v == null ? "–" : Math.round(v).toLocaleString()}<small> / ${kind === "max" ? "<" : ""}${tgt.toLocaleString()} ${unit}</small></span></div><div class="mbar ${kind}${bad ? " bad" : ""}"><i style="width:${pct}%"></i></div></div>`; }).join("")}</div><p class="hint">Estimates from photos, exact from labels.</p>`;
+}
 const kpi = (k, v, note, cls = "") => `<div class="kpi"><p class="eyebrow">${k}</p><div class="v ${cls}">${v}</div><div class="n">${note}</div></div>`;
 
 /* ================= shell ================= */
@@ -327,7 +337,8 @@ function renderToday(v) {
       <div id="mini-proj"></div>
       <div class="kpis" id="mini-kpis"></div>
     </section>
-  </div>`;
+  </div>
+  <section class="glass card"><div class="card-h"><h2 class="display">Nutrients</h2><span class="hint">Today vs daily guide</span></div>${microPanel(d.micros)}</section>`;
   const pr = projection(p, days());
   $("mini-proj").innerHTML = projChart(pr, p, W("mini-proj", 440), 230);
   $("mini-note").textContent = pr.source === "trend" ? "From your last 3 weeks" : pr.source === "plan" ? "At plan pace" : "";
@@ -519,7 +530,7 @@ function renderJournal(v) {
       return `<tr><td>${day}</td><td><span class="sess">${esc(d.session || "Rest")}</span></td><td>${n(d.weight) ?? "–"}</td><td class="${cls(kv, kv != null && kv <= t.kcal * 1.05)}">${kv?.toLocaleString() ?? "–"}</td><td class="${cls(pv, pv >= t.protein * 0.95)}">${pv != null ? pv + " g" : "–"}</td><td class="${cls(wv, wv >= t.water)}">${wv != null ? wv + " L" : "–"}</td><td class="${cls(sv, sv >= t.steps)}">${sv?.toLocaleString() ?? "–"}</td><td>${n(d.sleep) ?? "–"}</td><td>${d.lateSnack ? "Yes" : "No"}</td></tr>`; }).join("")}
     </tbody></table></div>
   </section>
-  <section class="glass card"><h2 class="display">Coach reviews</h2><div id="reviews" style="display:grid;gap:12px">${S.reviews.length ? S.reviews.map((r) => `<article class="review"><p class="eyebrow">${r.kind === "month" ? "Monthly" : "Weekly"} · ${esc(fmt(r.day, { month: "short", day: "numeric", year: "numeric" }))}</p><h3>${esc(r.title)}</h3><p>${esc(r.body)}</p></article>`).join("") : '<p class="empty">Reviews arrive every Sunday evening and on the 1st of each month.</p>'}</div></section>
+  <section class="glass card"><h2 class="display">Coach reviews</h2><div id="reviews" style="display:grid;gap:12px">${S.reviews.length ? S.reviews.map((r) => `<article class="review"><p class="eyebrow">${r.kind === "month" ? "Monthly" : r.kind === "day" ? "Daily report" : "Weekly"} · ${esc(fmt(r.day, { month: "short", day: "numeric", year: "numeric" }))}</p><h3>${esc(r.title)}</h3><p>${esc(r.body)}</p></article>`).join("") : '<p class="empty">A daily report lands every night, plus weekly and monthly reviews.</p>'}</div></section>
   <section class="glass card"><h2 class="display">Photos and videos</h2><div class="media" id="media"></div></section>
   <details class="glass card" id="manual" ${isMine() ? "" : "hidden"}>
     <summary>Edit ${esc(fmt(S.date, { weekday: "long", month: "short", day: "numeric" }))} by hand</summary>
